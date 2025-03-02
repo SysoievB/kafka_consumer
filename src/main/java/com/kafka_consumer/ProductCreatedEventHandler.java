@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 import org.springframework.kafka.annotation.KafkaHandler;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.messaging.handler.annotation.Payload;
@@ -20,6 +21,7 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class ProductCreatedEventHandler {
     private final ProcessEventRepository repository;
+    private final KafkaTemplate<?, ?> kafkaTemplate;
 
     @Transactional
     @KafkaHandler
@@ -36,8 +38,23 @@ public class ProductCreatedEventHandler {
                         },
                         () -> {
                             val event = repository.save(new ProcessEventEntity(messageId, productCreatedEvent.getProductId()));
-                            log.info("New ProcessEventEntity with this messageId {}, created", messageId);
+                            log.info("New ProcessEventEntity with this messageId {}, created", event.getMessageId());
                         }
                 );
+
+       // localTransaction(productCreatedEvent, messageId);
+    }
+
+    private void localTransaction(ProductCreatedEvent productCreatedEvent, String messageId) {
+        log.info("BEFORE LOCAL TRANSACTION");
+        try {
+            kafkaTemplate.executeInTransaction(operations -> {
+                log.info("ProcessEventEntity with this messageId {} was caught in local transaction", messageId);
+                return productCreatedEvent;
+            });
+        } catch (Exception e) {
+            log.error("Transaction failed", e);
+        }
+        log.info("AFTER LOCAL TRANSACTION");
     }
 }
